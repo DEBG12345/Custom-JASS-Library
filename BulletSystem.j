@@ -6,6 +6,7 @@
 //
 //  推薦用於製作技能彈幕，特別適用於移動路徑複雜的彈幕
 //========================================================
+// 彈幕移動系統
 // 返回彈幕ID
 function GetBulletID takes unit bullet returns integer
     return LoadInteger(udg_CustomCodeHashtable, GetHandleId(bullet), StringHash("BulletID"))
@@ -13,18 +14,12 @@ endfunction
 
 // 彈幕佇列
 function EnqueueBulletPointer takes integer n returns nothing
-    set udg_BulletSystem_bulletPointerQ[udg_BulletSystem_bulletPointerQMax] = n
     set udg_BulletSystem_bulletPointerQMax = udg_BulletSystem_bulletPointerQMax + 1
+    set udg_BulletSystem_bulletPointerQ[udg_BulletSystem_bulletPointerQMax] = n
 endfunction
 
 function DequeueBulletPointer takes nothing returns integer
-    local integer i = 0
-    local integer n = udg_BulletSystem_bulletPointerQ[0]
-    loop
-        exitwhen i > udg_BulletSystem_bulletPointerQMax
-        set udg_BulletSystem_bulletPointerQ[i] = udg_BulletSystem_bulletPointerQ[i+1]
-        set i = i + 1
-    endloop
+    local integer n = udg_BulletSystem_bulletPointerQ[udg_BulletSystem_bulletPointerQMax]
     set udg_BulletSystem_bulletPointerQMax = udg_BulletSystem_bulletPointerQMax - 1
     if udg_BulletSystem_bulletPointerQMax < 0 then
        set udg_BulletSystem_bulletPointerQMax = 0
@@ -46,8 +41,7 @@ endfunction
 // 若多於10個額外計時器功能，則額外的計時器功能無法使用
 function AddBulletFunction takes unit bullet, code f, real timeout, boolean periodic returns nothing
     local integer i = GetBulletID(bullet)
-    local integer j = 0
-    local timer t
+    local timer t = null
     if not IsUnitInGroup(bullet, udg_BulletSystem_bulletGroup) then
        return
     endif
@@ -80,18 +74,19 @@ function AddBulletFunction takes unit bullet, code f, real timeout, boolean peri
           set udg_BulletSystem_funcTimerI[i] = CreateTimer()
           set t = udg_BulletSystem_funcTimerI[i]
        endif
-       call TimerStart(t, timeout, periodic, f)
-       call SaveUnitHandle(udg_CustomCodeHashtable, GetHandleId(t), StringHash("FunctionBullet"), bullet)
-       set udg_BulletSystem_funcIndex[i] = udg_BulletSystem_funcIndex[i] + 1
-       set t = null
+       if t != null then
+          call TimerStart(t, timeout, periodic, f)
+          call SaveUnitHandle(udg_CustomCodeHashtable, GetHandleId(t), StringHash("FunctionBullet"), bullet)
+          set udg_BulletSystem_funcIndex[i] = udg_BulletSystem_funcIndex[i] + 1
+          set t = null
+       endif
     endif
 endfunction
 
 // 實用函數，移除指定的彈幕額外計時器功能
 function RemoveBulletFunction takes unit bullet, integer id returns nothing
     local integer i = GetBulletID(bullet)
-    local integer j = 0
-    local timer t
+    local timer t = null
     if not IsUnitInGroup(bullet, udg_BulletSystem_bulletGroup) then
        return
     endif
@@ -124,11 +119,13 @@ function RemoveBulletFunction takes unit bullet, integer id returns nothing
           set t = udg_BulletSystem_funcTimerI[i]
           set udg_BulletSystem_funcTimerI[i] = null
        endif
-       call PauseTimer(t)
-       call DestroyTimer(t)
-       call RemoveSavedHandle(udg_CustomCodeHashtable, GetHandleId(t), StringHash("FunctionBullet"))
-       set udg_BulletSystem_funcIndex[i] = udg_BulletSystem_funcIndex[i] - 1
-       set t = null
+       if t != null then
+          call PauseTimer(t)
+          call DestroyTimer(t)
+          call RemoveSavedHandle(udg_CustomCodeHashtable, GetHandleId(t), StringHash("FunctionBullet"))
+          set udg_BulletSystem_funcIndex[i] = udg_BulletSystem_funcIndex[i] - 1
+          set t = null
+       endif
     endif
 endfunction 
 
@@ -194,8 +191,8 @@ function RemoveAllBulletFunction takes unit bullet returns nothing
           call RemoveSavedHandle(udg_CustomCodeHashtable, GetHandleId(udg_BulletSystem_funcTimerI[i]), StringHash("FunctionBullet"))
           set udg_BulletSystem_funcTimerI[i] = null
        endif
+       set udg_BulletSystem_funcIndex[i] = 0
     endif
-    set udg_BulletSystem_funcIndex[i] = 0
 endfunction
 
 // 實用函數，暫停彈幕
@@ -214,16 +211,20 @@ endfunction
 // 實用函數，移除所有彈幕功能
 function ClearBullet takes unit bullet returns nothing
     local integer n = GetBulletID(bullet)
-    set udg_BulletSystem_bullet[n] = null
-    set udg_BulletSystem_bulletCollision[n] = false
-    set udg_BulletSystem_collisionTrigger[n] = null
-    call EnqueueBulletPointer( n )
-    call StopBullet(bullet)
-    call RemoveAllBulletFunction(bullet)
-    call DestroyGroup(udg_BulletSystem_countedGroup[n])
-    set udg_BulletSystem_countedGroup[n] = null
-    call GroupRemoveUnit(udg_BulletSystem_bulletGroup, bullet)
-    call RemoveSavedInteger(udg_CustomCodeHashtable, GetHandleId(bullet), StringHash("BulletID"))
+    if n > 0 or IsUnitInGroup(bullet, udg_BulletSystem_bulletGroup) then
+       set udg_BulletSystem_bullet[n] = null
+       set udg_BulletSystem_bulletTime[n] = 0
+       set udg_BulletSystem_bulletTimeMax[n] = 0
+       set udg_BulletSystem_bulletCollision[n] = false
+       set udg_BulletSystem_collisionTrigger[n] = null
+       call EnqueueBulletPointer(n)
+       call StopBullet(bullet)
+       call RemoveAllBulletFunction(bullet)
+       call GroupClear(udg_BulletSystem_countedGroup[n])
+       set udg_BulletSystem_countedGroup[n] = null
+       call GroupRemoveUnit(udg_BulletSystem_bulletGroup, bullet)
+       call RemoveSavedInteger(udg_CustomCodeHashtable, GetHandleId(bullet), StringHash("BulletID"))
+    endif
 endfunction
 
 // 實用函數，判斷單位是否視為彈幕
@@ -233,7 +234,10 @@ endfunction
 
 // 彈幕碰撞判定
 function BulletCollisionGroupEnumFilter takes nothing returns boolean
-    return IsUnitInRangeXY(GetFilterUnit(), udg_BulletSystem_bulletX, udg_BulletSystem_bulletY, udg_BulletSystem_collisionRadius[udg_BulletSystem_moveBulletIndex])
+    local unit u = GetFilterUnit()
+    local boolean b = not IsUnitDead(u) and u != udg_BulletSystem_bullet[udg_BulletSystem_moveBulletIndex] and IsUnitInRangeXY(u, udg_BulletSystem_bulletX, udg_BulletSystem_bulletY, udg_BulletSystem_collisionRadius[udg_BulletSystem_moveBulletIndex])
+    set u = null
+    return b
 endfunction
 
 function BulletCollisionSystem takes nothing returns nothing
@@ -244,7 +248,7 @@ function BulletCollisionSystem takes nothing returns nothing
     loop
         set udg_BulletSystem_collisionEnumUnit = FirstOfGroup(udg_BulletSystem_collisionGroup)
         exitwhen udg_BulletSystem_collisionEnumUnit == null or udg_BulletSystem_bulletCollision[udg_BulletSystem_moveBulletIndex] == false
-        if udg_BulletSystem_collisionTrigger[udg_BulletSystem_moveBulletIndex] != null and not IsUnitDead(udg_BulletSystem_collisionEnumUnit) and IsTriggerEnabled(udg_BulletSystem_collisionTrigger[udg_BulletSystem_moveBulletIndex]) and TriggerEvaluate(udg_BulletSystem_collisionTrigger[udg_BulletSystem_moveBulletIndex]) then
+        if udg_BulletSystem_collisionTrigger[udg_BulletSystem_moveBulletIndex] != null and IsTriggerEnabled(udg_BulletSystem_collisionTrigger[udg_BulletSystem_moveBulletIndex]) and TriggerEvaluate(udg_BulletSystem_collisionTrigger[udg_BulletSystem_moveBulletIndex]) then
            set udg_BulletSystem_collisionBullet = udg_BulletSystem_bullet[udg_BulletSystem_moveBulletIndex]
            call TriggerExecute(udg_BulletSystem_collisionTrigger[udg_BulletSystem_moveBulletIndex])
            call GroupAddUnit(udg_BulletSystem_countedGroup[udg_BulletSystem_moveBulletIndex], udg_BulletSystem_collisionEnumUnit)
@@ -314,11 +318,11 @@ function MoveBulletPatternSin takes nothing returns nothing
     set udg_BulletSystem_bulletSpeed[udg_BulletSystem_moveBulletIndex] = udg_BulletSystem_bulletSpeed[udg_BulletSystem_moveBulletIndex] + udg_BulletSystem_bulletAccel[udg_BulletSystem_moveBulletIndex]
     set udg_BulletSystem_bulletAngleSpeed[udg_BulletSystem_moveBulletIndex] = udg_BulletSystem_bulletAngleSpeed[udg_BulletSystem_moveBulletIndex] + udg_BulletSystem_bulletAngleAccel[udg_BulletSystem_moveBulletIndex]
     set dx = udg_BulletSystem_bulletSpeed[udg_BulletSystem_moveBulletIndex]
-    set dy = udg_BulletSystem_bulletAmplitude[udg_BulletSystem_moveBulletIndex] * Sin(udg_BulletSystem_bulletAngleSpeed[udg_BulletSystem_moveBulletIndex] * udg_BulletSystem_bulletTime[udg_BulletSystem_moveBulletIndex] * udg_BulletSystem_frequency)
+    set dy = udg_BulletSystem_bulletAmplitude[udg_BulletSystem_moveBulletIndex] * Sin(udg_BulletSystem_bulletAngleSpeed[udg_BulletSystem_moveBulletIndex] * udg_BulletSystem_bulletTime[udg_BulletSystem_moveBulletIndex] * udg_BulletSystem_frequency * bj_DEGTORAD)
     set r = SquareRoot(dx * dx + dy * dy)
-    set a = Atan2(dy, dx) + udg_BulletSystem_bulletAngle[udg_BulletSystem_moveBulletIndex] * bj_DEGTORAD
-    set dx = udg_BulletSystem_bulletX + r * Cos(a)
-    set dy = udg_BulletSystem_bulletY + r * Sin(a)
+    set a = Atan2(dy, dx) + udg_BulletSystem_bulletAngle[udg_BulletSystem_moveBulletIndex]
+    set dx = udg_BulletSystem_bulletX + r * Cos(a * bj_DEGTORAD)
+    set dy = udg_BulletSystem_bulletY + r * Sin(a * bj_DEGTORAD)
     if dx > udg_BulletSystem_maxX then
        set dx = udg_BulletSystem_maxX
     elseif dx < udg_BulletSystem_minX then
@@ -344,11 +348,11 @@ function MoveBulletPatternSinDecay takes nothing returns nothing
     set udg_BulletSystem_bulletSpeed[udg_BulletSystem_moveBulletIndex] = udg_BulletSystem_bulletSpeed[udg_BulletSystem_moveBulletIndex] + udg_BulletSystem_bulletAccel[udg_BulletSystem_moveBulletIndex]
     set udg_BulletSystem_bulletAngleSpeed[udg_BulletSystem_moveBulletIndex] = udg_BulletSystem_bulletAngleSpeed[udg_BulletSystem_moveBulletIndex] + udg_BulletSystem_bulletAngleAccel[udg_BulletSystem_moveBulletIndex]
     set dx = udg_BulletSystem_bulletSpeed[udg_BulletSystem_moveBulletIndex]
-    set dy = udg_BulletSystem_bulletAmplitude[udg_BulletSystem_moveBulletIndex] * Pow(2.718281828, -1 * udg_BulletSystem_bulletAmpDecay[udg_BulletSystem_moveBulletIndex] * udg_BulletSystem_bulletTime[udg_BulletSystem_moveBulletIndex] * udg_BulletSystem_frequency) * Sin(udg_BulletSystem_bulletAngleSpeed[udg_BulletSystem_moveBulletIndex] * udg_BulletSystem_bulletTime[udg_BulletSystem_moveBulletIndex] * udg_BulletSystem_frequency)
+    set dy = udg_BulletSystem_bulletAmplitude[udg_BulletSystem_moveBulletIndex] * Pow(2.718281828, -1 * udg_BulletSystem_bulletAmpDecay[udg_BulletSystem_moveBulletIndex] * udg_BulletSystem_bulletTime[udg_BulletSystem_moveBulletIndex] * udg_BulletSystem_frequency) * Sin(udg_BulletSystem_bulletAngleSpeed[udg_BulletSystem_moveBulletIndex] * udg_BulletSystem_bulletTime[udg_BulletSystem_moveBulletIndex] * udg_BulletSystem_frequency * bj_DEGTORAD)
     set r = SquareRoot(dx * dx + dy * dy)
-    set a = Atan2(dy, dx) + udg_BulletSystem_bulletAngle[udg_BulletSystem_moveBulletIndex] * bj_DEGTORAD
-    set dx = udg_BulletSystem_bulletX + r * Cos(a)
-    set dy = udg_BulletSystem_bulletY + r * Sin(a)
+    set a = Atan2(dy, dx) + udg_BulletSystem_bulletAngle[udg_BulletSystem_moveBulletIndex]
+    set dx = udg_BulletSystem_bulletX + r * Cos(a * bj_DEGTORAD)
+    set dy = udg_BulletSystem_bulletY + r * Sin(a * bj_DEGTORAD)
     if dx > udg_BulletSystem_maxX then
        set dx = udg_BulletSystem_maxX
     elseif dx < udg_BulletSystem_minX then
@@ -481,7 +485,7 @@ function BulletUpdateSystem takes nothing returns nothing
                  endif
                  set udg_BulletSystem_bulletTime[udg_BulletSystem_moveBulletIndex] = udg_BulletSystem_bulletTime[udg_BulletSystem_moveBulletIndex] + 1
                  if udg_BulletSystem_bulletTimeMax[udg_BulletSystem_moveBulletIndex] >= 0 and udg_BulletSystem_bulletTime[udg_BulletSystem_moveBulletIndex] >= udg_BulletSystem_bulletTimeMax[udg_BulletSystem_moveBulletIndex] then
-                    call KillUnit(udg_BulletSystem_bullet[udg_BulletSystem_moveBulletIndex])
+                    call ClearBullet(udg_BulletSystem_bullet[udg_BulletSystem_moveBulletIndex])
                  endif
               endif
            endif
@@ -491,6 +495,7 @@ function BulletUpdateSystem takes nothing returns nothing
           set udg_BulletSystem_bulletPointer = 1
           set udg_BulletSystem_bulletMax = 0
           call ResetBulletPointerQueue()
+          call PauseTimer(udg_BulletSystem_timer)
           call DestroyTimer(udg_BulletSystem_timer)
           set udg_BulletSystem_timer = null
        endif
@@ -503,13 +508,12 @@ function SetUnitBullet takes unit bullet returns nothing
        return
     endif
     set udg_BulletSystem_bulletPointer = GetBulletID(bullet)
+    if udg_BulletSystem_bulletPointer == 0 and udg_BulletSystem_bulletPointerQMax > 0 then
+       set udg_BulletSystem_bulletPointer = DequeueBulletPointer()
+    endif
     if udg_BulletSystem_bulletPointer == 0 then
-       if udg_BulletSystem_bulletPointerQMax > 0 then
-          set udg_BulletSystem_bulletPointer = DequeueBulletPointer()
-       else
-          set udg_BulletSystem_bulletPointer = udg_BulletSystem_bulletMax + 1
-          set udg_BulletSystem_bulletMax = udg_BulletSystem_bulletMax + 1
-       endif
+       set udg_BulletSystem_bulletPointer = udg_BulletSystem_bulletMax + 1
+       set udg_BulletSystem_bulletMax = udg_BulletSystem_bulletMax + 1
     endif
     set udg_BulletSystem_bullet[udg_BulletSystem_bulletPointer] = bullet
     set udg_BulletSystem_bulletTime[udg_BulletSystem_bulletPointer] = 0
@@ -662,10 +666,10 @@ function SetBulletSpeed takes unit bullet, real speed returns nothing
 endfunction
 
 // 實用函數，設定彈幕移動時的加速度
-function SetBulletAcceloration takes unit bullet, real acceloration returns nothing
+function SetBulletAcceleration takes unit bullet, real acceleration returns nothing
     local integer i = GetBulletID(bullet)
     if IsUnitInGroup(bullet, udg_BulletSystem_bulletGroup) and i > 0 and udg_BulletSystem_bulletMove[i] then
-       set udg_BulletSystem_bulletAccel[i] = acceloration
+       set udg_BulletSystem_bulletAccel[i] = acceleration
     endif
 endfunction
 
@@ -686,7 +690,7 @@ function SetBulletAngularVelocity takes unit bullet, real omega returns nothing
 endfunction
 
 // 實用函數，設定彈幕移動時的角加速度
-function SetBulletAngularAcceloration takes unit bullet, real alpha returns nothing
+function SetBulletAngularAcceleration takes unit bullet, real alpha returns nothing
     local integer i = GetBulletID(bullet)
     if IsUnitInGroup(bullet, udg_BulletSystem_bulletGroup) and i > 0 and udg_BulletSystem_bulletMove[i] then
        set udg_BulletSystem_bulletAngleAccel[i] = alpha
@@ -755,15 +759,14 @@ function TriggerUnregisterBulletCollisionEvent takes trigger t, unit bullet retu
 endfunction
 
 // 實用函數，取得碰撞事件的碰撞彈幕
-function GetBulletCollisionBullet takes nothing returns unit
+constant function GetBulletCollisionBullet takes nothing returns unit
     return udg_BulletSystem_collisionBullet
 endfunction
 
 // 實用函數，取得碰撞事件的碰撞單位
-function GetBulletCollisionUnit takes nothing returns unit
+constant function GetBulletCollisionUnit takes nothing returns unit
     return udg_BulletSystem_collisionEnumUnit
 endfunction
-
 
 // 實用函數，在彈幕額外計時器功能中取得彈幕
 function GetFunctionBullet takes timer t returns unit
@@ -779,15 +782,6 @@ endfunction
 // 實用函數，檢查單位是否曾被彈幕碰撞
 function IsUnitCollidedWithBullet takes unit u, unit bullet returns boolean
     return IsUnitInGroup(u, udg_BulletSystem_countedGroup[GetBulletID(bullet)])
-endfunction
-
-// 彈幕死亡，移除所有彈幕功能以釋放內存
-function BulletDeathCondition takes nothing returns boolean
-    return IsUnitBullet(GetDyingUnit())
-endfunction
-
-function BulletDeath takes nothing returns nothing
-    call ClearBullet(GetDyingUnit())
 endfunction
 
 // 選取範圍內的彈幕
@@ -808,10 +802,6 @@ endfunction
 // 初始化彈幕系統
 function InitializeBulletSystem takes nothing returns nothing
     local trigger t = CreateTrigger()
-    call TriggerRegisterAnyUnitEventBJ( t, EVENT_PLAYER_UNIT_DEATH )
-    call TriggerAddCondition(t, Condition(function BulletDeathCondition))
-    call TriggerAddAction(t, function BulletDeath)
-    set t = CreateTrigger()
     call TriggerAddAction(t, function MoveBulletPatternStandard)
     set udg_BulletSystem_bulletMoveType[1] = t
     set t = CreateTrigger()
@@ -833,6 +823,42 @@ function InitializeBulletSystem takes nothing returns nothing
     call TriggerAddAction(t, function MoveBulletPatternSpin)
     set udg_BulletSystem_bulletMoveType[7] = t
     set t = null
+    call DestroyTimer(udg_BulletSystem_funcTimerA[0])
+    set udg_BulletSystem_funcTimerA[0] = null
+    call DestroyTimer(udg_BulletSystem_funcTimerB[0])
+    set udg_BulletSystem_funcTimerB[0] = null
+    call DestroyTimer(udg_BulletSystem_funcTimerC[0])
+    set udg_BulletSystem_funcTimerC[0] = null
+    call DestroyTimer(udg_BulletSystem_funcTimerD[0])
+    set udg_BulletSystem_funcTimerD[0] = null
+    call DestroyTimer(udg_BulletSystem_funcTimerE[0])
+    set udg_BulletSystem_funcTimerE[0] = null
+    call DestroyTimer(udg_BulletSystem_funcTimerF[0])
+    set udg_BulletSystem_funcTimerF[0] = null
+    call DestroyTimer(udg_BulletSystem_funcTimerG[0])
+    set udg_BulletSystem_funcTimerG[0] = null
+    call DestroyTimer(udg_BulletSystem_funcTimerH[0])
+    set udg_BulletSystem_funcTimerH[0] = null
+    call DestroyTimer(udg_BulletSystem_funcTimerI[0])
+    set udg_BulletSystem_funcTimerI[0] = null
+    call DestroyTimer(udg_BulletSystem_funcTimerA[1])
+    set udg_BulletSystem_funcTimerA[1] = null
+    call DestroyTimer(udg_BulletSystem_funcTimerB[1])
+    set udg_BulletSystem_funcTimerB[1] = null
+    call DestroyTimer(udg_BulletSystem_funcTimerC[1])
+    set udg_BulletSystem_funcTimerC[1] = null
+    call DestroyTimer(udg_BulletSystem_funcTimerD[1])
+    set udg_BulletSystem_funcTimerD[1] = null
+    call DestroyTimer(udg_BulletSystem_funcTimerE[1])
+    set udg_BulletSystem_funcTimerE[1] = null
+    call DestroyTimer(udg_BulletSystem_funcTimerF[1])
+    set udg_BulletSystem_funcTimerF[1] = null
+    call DestroyTimer(udg_BulletSystem_funcTimerG[1])
+    set udg_BulletSystem_funcTimerG[1] = null
+    call DestroyTimer(udg_BulletSystem_funcTimerH[1])
+    set udg_BulletSystem_funcTimerH[1] = null
+    call DestroyTimer(udg_BulletSystem_funcTimerI[1])
+    set udg_BulletSystem_funcTimerI[1] = null
     call DestroyTimer(udg_BulletSystem_timer)
     set udg_BulletSystem_timer = null
 endfunction
